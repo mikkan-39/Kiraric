@@ -5,7 +5,7 @@ class Dynamixel_handler:
     def __init__(self, portname):
         self.PORTNAME = portname
         self.memory_adresses = {
-            "id":                (3,  1),
+            "id":                (3,  1), # "name": (addr, bytes)
             "model":             (0,  2),
             "firmware_ver":      (2,  1),
             "return_delay_time": (5,  1),
