@@ -1,5 +1,3 @@
-# The MIT License (MIT)
-
 import wiringpi as wp
 
 GPIO_EXPANDER_DEFAULT_I2C_ADDRESS   = 0X2A
@@ -25,12 +23,6 @@ INPUT_PULLUP   = 2
 INPUT_PULLDOWN = 3
 
 def getPiI2CBusNumber():
-    """
-    Returns the I2C bus number (/dev/i2c-#) for the Raspberry Pi being used.
-
-    Courtesy quick2wire-python-api
-    https://github.com/quick2wire/quick2wire-python-api
-    """
     try:
         with open('/proc/cpuinfo','r') as f:
             for line in f:
@@ -39,16 +31,13 @@ def getPiI2CBusNumber():
     except:
         return 0
 
-class gpioexp(object):
-    """Troyka gpio expander."""
+class I2c_expander(object):
 
     def __init__(self, gpioexp_address=GPIO_EXPANDER_DEFAULT_I2C_ADDRESS):
-
-        # Setup I2C interface for accelerometer and magnetometer.
         wp.wiringPiSetup()
         self._i2c = wp.I2C()
         self._io = self._i2c.setupInterface('/dev/i2c-' + str(getPiI2CBusNumber()), gpioexp_address)
-#        self._gpioexp.write_byte(self._addr, GPIO_EXPANDER_RESET)
+
     def reverse_uint16(self, data):
         result = ((data & 0xff) << 8) | ((data>>8) & 0xff)
         return result
