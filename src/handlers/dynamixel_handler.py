@@ -128,3 +128,104 @@ class Dynamixel_handler:
 
     def dump_ram(self, DXL_ID):
         return {param: self.read_from_ram(DXL_ID, param) for param in self.memory_adresses.keys()}
+
+    def diagnostics(self, logging=False, autofix=False):
+        def tablelize(headers_v, headers_h, values_by_h):
+            max_header_v_width = max(len(key) for key in headers_v)
+            max_headers_h_max_header_v_widths = [
+                max(len(str(value)) for value in values_by_h[key].values()) for key in headers_h
+            ]
+
+            line_width = (
+                max_header_v_width + sum(max_headers_h_max_header_v_widths) + len(headers_h)
+            )  # len(headers_h.keys()) to count whitespaces between ids
+
+            print(" ".join([
+                        " " * max_header_v_width,
+                        *[
+                            str(header_h).ljust(max_headers_h_max_header_v_widths[index])
+                            for index, header_h in enumerate(headers_h)
+                        ],
+                    ]))
+
+            for header_v in headers_v:
+                print("-" * line_width)
+                print(" ".join([
+                            header_v.ljust(max_header_v_width),
+                            *[
+                                str(values_by_h[header_h][header_v]).ljust(max_headers_h_max_header_v_widths[index])
+                                for index, header_h in enumerate(headers_h)
+                            ],
+                        ]))
+
+        id_list = self.ping_all()
+        param_list = self.memory_adresses.keys()
+        
+        def check_motor(id):
+            self.set_led([id], 1)
+            res = self.dump_ram(id)
+            #self.set_led([id], 0)
+            return res
+
+        motors_params = {id: check_motor(id) for id in id_list}
+
+        self.syncWrite(id_list, "led", [0]*len(id_list))
+
+        if logging:
+            print('\n')
+            tablelize(param_list, id_list, motors_params)
+            print('\n')
+        
+        if autofix:
+            for ID in motors_params.keys():
+                motor = motors_params[ID]
+                for param in motor.keys():
+                    if param in self.default_params.keys():
+                        default = self.default_params[param]
+                        if motor[param] != default:
+                            print("\033[1m" + 
+                                "[Autofix] Set %s to %d for ID%d" % (param, default, ID) 
+                                + "\033[0m")
+                            self.write_to_ram(ID, param, default)
+            pass
+
+        return motors_params
+
+    def enable_torque(self, DXL_IDS):
+        for DXL_ID in DXL_IDS:
+            self.write_to_ram(DXL_ID, "torque_enable", 1)
+
+
+    def disable_torque(self, DXL_IDS):
+        for DXL_ID in DXL_IDS:
+            self.write_to_ram(DXL_ID, "torque_enable", 0)
+
+    def set_led(self, DXL_IDS, val):
+        for DXL_ID in DXL_IDS:
+            self.write_to_ram(DXL_ID, "led", val)
+
+    def wait_for_goal_positions(self, DXL_IDS):
+        goals = {
+            ID: self.read_from_ram(ID, "goal_position") for ID in DXL_IDS
+        }
+        reached = False
+        while not reached:
+            positions = {
+                ID: self.read_from_ram(ID, "present_position") for ID in DXL_IDS
+            }
+            reached = all([
+                abs(positions[ID]-goals[ID])<10 for ID in DXL_IDS
+            ])
+            speeds = {
+                ID: self.read_from_ram(ID, "present_speed") for ID in DXL_IDS
+            }
+            reached = reached and all([
+                abs(speeds[ID])<2 for ID in DXL_IDS
+            ])
+        pass
+    
+    
+    def set_wheel_mode(self, DXL_IDS):
+        for DXL_ID in DXL_IDS:
+            self.write_to_ram(DXL_ID, "ccw_limit", 0)
+        pass
