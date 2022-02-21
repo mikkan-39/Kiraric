@@ -1,32 +1,20 @@
 from dynamixel_sdk import *
-
+import dxl_adresses as DXL
 
 class Dynamixel_handler:
-    def __init__(self, portname):
+    def __init__(self, portname='/dev/ttyACM0'):
         self.PORTNAME = portname
-        self.memory_adresses = {
-            "id":                (3,  1), # "name": (addr, bytes)
-            "model":             (0,  2),
-            "firmware_ver":      (2,  1),
-            "return_delay_time": (5,  1),
-            "max_torque":        (14, 2),
-            "torque_enable":     (24, 1),
-            "torque_limit":      (34, 2),
-            "led":               (25, 1),
-            "goal_position":     (30, 2),
-            "present_position":  (36, 2),
-            "moving_speed":      (32, 2),
-            "present_speed":     (38, 2),
-            "present_load":      (40, 2),
-            "present_voltage":   (42, 1),
-            "present_temp":      (43, 1),
-            "cw_angle_limit":    (6,  2),
-            "ccw_angle_limit":   (8,  2),
-            "cw_compliance":     (26, 1),
-            "ccw_compliance":    (27, 1),
-            "cw_slope":          (28, 1),
-            "ccw_slope":         (29, 1),
-        }
+        PROTOCOL_VERSION = 1.0
+        BAUDRATE = 1000000
+        DEVICENAME = self.PORTNAME
+        self.__portHandler = PortHandler(DEVICENAME)
+        self.__packetHandler = PacketHandler(PROTOCOL_VERSION)
+        if self.__portHandler.openPort():
+            if not self.__portHandler.setBaudRate(BAUDRATE):
+                raise Exception
+        else:
+            raise Exception
+        self.memory_adresses = DXL.ADDR_TABLE
         self.default_params = {
             "return_delay_time": 0,
             "max_torque": 1023,
@@ -59,6 +47,7 @@ class Dynamixel_handler:
         return self.__portHandler.closePort()
 
 
+    # Finds all servos on the bus and returns an ID list
     def ping_all(self, logging=False):
         found_motors = []
         for ID in range(30):
@@ -74,48 +63,72 @@ class Dynamixel_handler:
         return found_motors
 
 
-    def write_to_ram(self, DXL_ID, name, value):
-        (addr, byte_len) = self.memory_adresses[name]
-
-        if byte_len == 1:
+    # Writes to a field in memory
+    def write(self, DXL_ID, memory_field, value):
+        (ADDR, BYTELEN, READONLY, MAXVAL) = memory_field
+        # Support for Boolean values
+        if MAXVAL == 1:
+            value = 1 if value else 0
+        # Sanity check
+        if value < 0 or value > MAXVAL: 
+            raise ValueError(f'Unacceptable value {value} for address {ADDR}.')
+        if READONLY:
+            raise ValueError(f'Address {ADDR} is read-only.')
+        
+        if BYTELEN == 1:
             dxl_comm_result, dxl_error = self.__packetHandler.write1ByteTxRx(
-                self.__portHandler, DXL_ID, addr, value)
-        elif byte_len == 2:
+                self.__portHandler, DXL_ID, ADDR, value)
+        elif BYTELEN == 2:
             dxl_comm_result, dxl_error = self.__packetHandler.write2ByteTxRx(
-                self.__portHandler, DXL_ID, addr, value)
+                self.__portHandler, DXL_ID, ADDR, value)
         if dxl_comm_result != COMM_SUCCESS:
             raise Exception("%s" % self.__packetHandler.getTxRxResult(dxl_comm_result))
         elif dxl_error:
             raise Exception("%s" % self.__packetHandler.getRxPacketError(dxl_error))
 
-
-    def read_from_ram(self, DXL_ID, name):
-        (addr, byte_len) = self.memory_adresses[name]
-        if byte_len == 1:
-            value, dxl_comm_result, dxl_error = self.__packetHandler.read1ByteTxRx(self.__portHandler, DXL_ID, addr)
-        elif byte_len == 2:
-            value, dxl_comm_result, dxl_error = self.__packetHandler.read2ByteTxRx(self.__portHandler, DXL_ID, addr)
+    # Reads a field from memory
+    def read(self, DXL_ID, memory_field):
+        (ADDR, BYTELEN, READONLY, MAXVAL) = memory_field
+        
+        if BYTELEN == 1:
+            value, dxl_comm_result, dxl_error = self.__packetHandler.read1ByteTxRx(self.__portHandler, DXL_ID, ADDR)
+        elif BYTELEN == 2:
+            value, dxl_comm_result, dxl_error = self.__packetHandler.read2ByteTxRx(self.__portHandler, DXL_ID, ADDR)
 
         if dxl_comm_result != COMM_SUCCESS:
             raise Exception("%s" % self.__packetHandler.getTxRxResult(dxl_comm_result))
         elif dxl_error:
             raise Exception("%s" % self.__packetHandler.getRxPacketError(dxl_error))
+
+        # Convert to Boolean 
+        if MAXVAL == 1:
+            value = True if value else False
 
         return value
 
+    # Syncronized write to multiple servos. Only can write to the same field
+    def syncWrite(self,  DXL_IDS, memory_field, values):
+        (ADDR, BYTELEN, READONLY, MAXVAL) = memory_field
 
-    def syncWrite(self,  DXL_IDS, name, values):
-        if name in self.memory_adresses.keys():
-            (addr, byte_len) = self.memory_adresses[name]
-        else:
-            raise Exception("Cannot find parameter [%s]" % name)
+        # Support for Boolean values
+        if MAXVAL == 1:
+            values = [1 if v else 0 for v in values]
+        # In case we want to write the same value
+        if len(list(values) == 1):
+            values = list(values) * len(DXL_IDS)
+        # Sanity check
+        if any([v < 0 or v > MAXVAL for v in values]):
+            raise ValueError(f'Unacceptable value for address {ADDR}.')
+        if READONLY:
+            raise ValueError(f'Address {ADDR} is read-only.')
         if len(DXL_IDS) != len(values):
             raise ValueError('Cannot match motors with positions')
-        self.__groupSyncWrite = GroupSyncWrite(self.__portHandler, self.__packetHandler, addr, byte_len)
+
+        self.__groupSyncWrite = GroupSyncWrite(self.__portHandler, self.__packetHandler, ADDR, BYTELEN)
         for (DXL_ID, val) in zip(DXL_IDS, values):
-            if byte_len == 1:
+            if BYTELEN == 1:
                 param = [DXL_LOBYTE(val)]
-            elif byte_len == 2:
+            elif BYTELEN == 2:
                 param = [DXL_LOBYTE(val), DXL_HIBYTE(val)]
             dxl_addparam_result = self.__groupSyncWrite.addParam(DXL_ID, param)
             if not dxl_addparam_result:
@@ -126,10 +139,14 @@ class Dynamixel_handler:
         self.__groupSyncWrite.clearParam()
 
 
-    def dump_ram(self, DXL_ID):
-        return {param: self.read_from_ram(DXL_ID, param) for param in self.memory_adresses.keys()}
+    # Reads all memory from a servo. Used for diagnostics
+    def dump(self, DXL_ID):
+        return {name: self.read(DXL_ID, params) for name, params in self.memory_adresses.items()}
 
-    def diagnostics(self, logging=False, autofix=False):
+
+    # Checks connection with each servo, and enforces default values for some critical memory fields. 
+    # Also, it prints out a nice table of all servo's memory fields
+    def diagnostics(self, logging=True, autofix=True):
         def tablelize(headers_v, headers_h, values_by_h):
             max_header_v_width = max(len(key) for key in headers_v)
             max_headers_h_max_header_v_widths = [
@@ -138,7 +155,7 @@ class Dynamixel_handler:
 
             line_width = (
                 max_header_v_width + sum(max_headers_h_max_header_v_widths) + len(headers_h)
-            )  # len(headers_h.keys()) to count whitespaces between ids
+            )
 
             print(" ".join([
                         " " * max_header_v_width,
@@ -162,14 +179,14 @@ class Dynamixel_handler:
         param_list = self.memory_adresses.keys()
         
         def check_motor(id):
-            self.set_led([id], 1)
-            res = self.dump_ram(id)
-            #self.set_led([id], 0)
+            self.write(id, DXL.led, True)
+            res = self.dump(id)
+            self.write(id, DXL.led, False)
             return res
 
         motors_params = {id: check_motor(id) for id in id_list}
 
-        self.syncWrite(id_list, "led", [0]*len(id_list))
+        self.syncWrite(id_list, DXL.led, False)
 
         if logging:
             print('\n')
@@ -186,46 +203,33 @@ class Dynamixel_handler:
                             print("\033[1m" + 
                                 "[Autofix] Set %s to %d for ID%d" % (param, default, ID) 
                                 + "\033[0m")
-                            self.write_to_ram(ID, param, default)
+                            self.write(ID, param, default)
             pass
 
         return motors_params
 
-    def enable_torque(self, DXL_IDS):
-        for DXL_ID in DXL_IDS:
-            self.write_to_ram(DXL_ID, "torque_enable", 1)
-
-
-    def disable_torque(self, DXL_IDS):
-        for DXL_ID in DXL_IDS:
-            self.write_to_ram(DXL_ID, "torque_enable", 0)
-
-    def set_led(self, DXL_IDS, val):
-        for DXL_ID in DXL_IDS:
-            self.write_to_ram(DXL_ID, "led", val)
-
     def wait_for_goal_positions(self, DXL_IDS):
         goals = {
-            ID: self.read_from_ram(ID, "goal_position") for ID in DXL_IDS
+            ID: self.read(ID, DXL.goal_position) for ID in DXL_IDS
         }
         reached = False
-        while not reached:
+        while not ready:
             positions = {
-                ID: self.read_from_ram(ID, "present_position") for ID in DXL_IDS
+                ID: self.read(ID, DXL.present_position) for ID in DXL_IDS
             }
             reached = all([
                 abs(positions[ID]-goals[ID])<10 for ID in DXL_IDS
             ])
             speeds = {
-                ID: self.read_from_ram(ID, "present_speed") for ID in DXL_IDS
+                ID: self.read(ID, DXL.present_speed) for ID in DXL_IDS
             }
-            reached = reached and all([
+            ready = reached and all([
                 abs(speeds[ID])<2 for ID in DXL_IDS
             ])
         pass
     
     
-    def set_wheel_mode(self, DXL_IDS):
+    def set_wheel_mode(self, DXL_IDS, value):
         for DXL_ID in DXL_IDS:
-            self.write_to_ram(DXL_ID, "ccw_limit", 0)
+            self.write(DXL_ID, DXL.ccw_angle_limit, 0 if value else 1)
         pass
