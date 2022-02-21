@@ -1,19 +1,10 @@
-from dynamixel_sdk import *
-import dxl_adresses as DXL
+from libs.dynamixel_sdk import *
+import src.handlers.dxl_adresses as DXL
 
 class Dynamixel_handler:
     def __init__(self, portname='/dev/ttyACM0'):
         self.PORTNAME = portname
-        PROTOCOL_VERSION = 1.0
-        BAUDRATE = 1000000
-        DEVICENAME = self.PORTNAME
-        self.__portHandler = PortHandler(DEVICENAME)
-        self.__packetHandler = PacketHandler(PROTOCOL_VERSION)
-        if self.__portHandler.openPort():
-            if not self.__portHandler.setBaudRate(BAUDRATE):
-                raise Exception
-        else:
-            raise Exception
+        self.connect()
         self.memory_adresses = DXL.ADDR_TABLE
         self.default_params = {
             "return_delay_time": 0,
@@ -110,12 +101,13 @@ class Dynamixel_handler:
     def syncWrite(self,  DXL_IDS, memory_field, values):
         (ADDR, BYTELEN, READONLY, MAXVAL) = memory_field
 
+        # In case we want to write the same value
+        if values is not list:
+            values = [values] * len(DXL_IDS)
         # Support for Boolean values
         if MAXVAL == 1:
-            values = [1 if v else 0 for v in values]
-        # In case we want to write the same value
-        if len(list(values) == 1):
-            values = list(values) * len(DXL_IDS)
+            values = tuple([1 if v else 0 for v in values])
+
         # Sanity check
         if any([v < 0 or v > MAXVAL for v in values]):
             raise ValueError(f'Unacceptable value for address {ADDR}.')

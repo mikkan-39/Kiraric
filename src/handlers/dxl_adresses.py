@@ -34,4 +34,7 @@ ccw_compliance =    Field(27, 1)
 cw_slope =          Field(28, 1)
 ccw_slope =         Field(29, 1)
 
-ADDR_TABLE = locals()
+ADDR_TABLE = dict(locals())
+garbage = ['Field', '__builtins__', '__cached__', '__doc__', '__file__', '__loader__', '__name__', '__package__', '__spec__', 'namedtuple']
+for g in garbage:
+    ADDR_TABLE.pop(g, None)
