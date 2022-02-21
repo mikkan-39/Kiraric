@@ -53,3 +53,12 @@ class Robot(Dynamixel_handler):
     
     def set_reverse(self, servo_id, reverse):
         self.servos[servo_id]["reversed"] = reverse
+
+    def read_load(self, servo_id):
+        reversed = self.servos[servo_id]["reversed"]
+        load = self.read(servo_id, ADR.present_load)
+        if load < 1024:
+            res = load
+        else:
+            res = 1023-load
+        return res if reversed else res*-1
