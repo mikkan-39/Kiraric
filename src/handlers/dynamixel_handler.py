@@ -77,6 +77,7 @@ class Dynamixel_handler:
         elif dxl_error:
             raise Exception("%s" % self.__packetHandler.getRxPacketError(dxl_error))
 
+
     # Reads a field from memory
     def read(self, DXL_ID, memory_field):
         (ADDR, BYTELEN, READONLY, MAXVAL) = memory_field
@@ -96,6 +97,7 @@ class Dynamixel_handler:
             value = True if value else False
 
         return value
+
 
     # Syncronized write to multiple servos. Only can write to the same field
     def syncWrite(self,  DXL_IDS, memory_field, values):
@@ -199,6 +201,7 @@ class Dynamixel_handler:
             pass
 
         return motors_params
+
 
     def wait_for_goal_positions(self, DXL_IDS):
         goals = {
