@@ -27,6 +27,17 @@ class Robot(Dynamixel_handler):
             val = int(512-((angle+offset)*512/150))
         self.write(servo_id, ADR.goal_position, val)
 
+
+    def read_angle(self, servo_id):
+        pos = self.read(servo_id, ADR.present_position)
+        offset = self.servos[servo_id]["offset"]
+        reversed = self.servos[servo_id]["reversed"]
+        if not reversed:
+            val = (pos-512)*150/512 - offset
+        else:
+            val = -1*(pos-512)*150/512 - offset
+        return val
+
     def relax(self, servo_id=None):
         if not servo_id:
             ids = self.servos.keys()
